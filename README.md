@@ -72,3 +72,23 @@ git config pull.rebase false  # Use 'merge' strategy when pulling updates
 ```
 
 For more details, refer to the [GitHub CLI documentation](https://docs.github.com/en/github-cli).
+
+### Branch Management
+#### Creating and Switching Branches
+- **Create a new branch**: ```bash git branch <branch_name> ```
+- **Switch to an existing branch**: ```bash git checkout <branch_name> ```
+- **Create and switch to a new branch**: ```bash git checkout -b <branch_name> ```
+#### Merging Branches
+- **Merge a branch into the current branch**: ```bash git merge <branch_name> ```
+- **Resolve merge conflicts**: Open the conflicting files, manually edit to resolve the conflicts, then add the resolved files: ```bash git add <file_name> git commit -m "Resolved merge conflicts" ```
+#### Deleting Branches
+- **Delete a local branch**: ```bash git branch -d <branch_name> ```
+- **Force delete a local branch** (use if the branch hasn’t been merged): ```bash git branch -D <branch_name> ```
+- **Delete a remote branch**: ```bash git push origin --delete <branch_name> ```
+#### Pushing and Pulling Branches
+- **Push a new branch to GitHub**: ```bash git push origin <branch_name> ```
+- **Pull changes for a specific branch from GitHub**: ```bash git pull origin <branch_name> ```
+#### Viewing Branches
+- **List all branches** (local and remote): ```bash git branch -a ```
+- **List only local branches**: ```bash git branch ```
+This section should cover the basics for working with branches in Git.
