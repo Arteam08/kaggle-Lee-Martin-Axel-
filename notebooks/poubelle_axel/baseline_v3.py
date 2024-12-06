@@ -199,197 +199,63 @@ def preprocess_text(text,
         words = [ps.stem(word) for word in words]
     return ' '.join(words)
 
+# Load data using Polars
+print("\nOpening the training files...\n")
+dfs = [pl.read_csv(f"{path_to_training_tweets}/{filename}") for filename in os.listdir(path_to_training_tweets)]
+df = pl.concat(dfs)
 
-print("\n" + 'Preprocessing text...' + '\n')
-print("\n" + 'Opening the training files...' + '\n')
-
-# Read all training files and concatenate them into one dataframe
-li = []
-for filename in os.listdir(path_to_training_tweets):
-    df = pd.read_csv(path_to_training_tweets + "/" + filename)
-    li.append(df)
-df = pd.concat(li, ignore_index=True)
-
-KEEP_ONLY = 100000
-print(f'Keeping only the first {KEEP_ONLY} rows for faster processing...')
+KEEP_ONLY = 10000
 df = df.head(KEEP_ONLY)
 
-print('\n' + 'Applying preprocessing to each tweet...' + '\n')
+# Preprocess tweets
+print("\nApplying preprocessing to each tweet...\n")
+df = df.with_column(
+    pl.col("Tweet").apply(preprocess_text).alias("Tweet")
+)
 
-# Apply preprocessing to each tweet
-df['Tweet'] = df['Tweet'].apply(preprocess_text)
+# Embedding tweets
+print("\nEmbedding the tweets...\n")
+tweet_vectors = np.vstack([get_avg_embedding(tweet, embeddings_model, 300) for tweet in df["Tweet"].to_list()])
+tweet_df = pl.DataFrame(tweet_vectors)
 
-print('\n' + 'Embedding the tweets...' + '\n')
+# Combine embeddings with the main DataFrame
+df = pl.concat([df, tweet_df], how="horizontal").drop(["Timestamp", "Tweet"])
 
-# Apply preprocessing to each tweet and obtain vectors
-vector_size = 300  # Adjust based on the chosen GloVe model
-tweet_vectors = np.vstack([get_avg_embedding(tweet, embeddings_model, vector_size) for tweet in df['Tweet']])
-tweet_df = pd.DataFrame(tweet_vectors)
+# Prepare features and labels
+X = df.drop(["EventType", "MatchID", "PeriodID", "ID"]).to_numpy()
+y = df["EventType"].to_numpy()
 
-print('\n' + 'Grouping the tweets into their corresponding periods...' + '\n')
+print(f"X shape: {X.shape}")
 
-# Attach the vectors into the original dataframe
-period_features = pd.concat([df, tweet_df], axis=1)
-# Drop the columns that are not useful anymore
-period_features = period_features.drop(columns=['Timestamp', 'Tweet'])
-
-######## REMOVE THE PART WHERE WE GROUP THE TWEETS INTO THEIR CORRESPONDING PERIODS
-# # Group the tweets into their corresponding periods. This way we generate an average embedding vector for each period
-# period_features = period_features.groupby(['MatchID', 'PeriodID', 'ID']).mean().reset_index()
-
-# We drop the non-numerical features and keep the embeddings values for each period
-X = period_features.drop(columns=['EventType', 'MatchID', 'PeriodID', 'ID']).values
-# We extract the labels of our training samples
-y = period_features['EventType'].values
-
-print(f'X shape: {X.shape}')
-
-###### Evaluating on a test set:
-
-print('\n' + 'Evaluation on a test set...' + '\n')
-
-# We split our data into a training and test set that we can use to train our classifier without fine-tuning into the
-# validation set and without submitting too many times into Kaggle
+# Split data
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
-# We set up a basic classifier that we train and then calculate the accuracy on our test set
-dummy_clf = DummyClassifier(strategy="most_frequent").fit(X, y)
-# Logistic Regression with regularization
-logreg = LogisticRegression(
-    random_state=42,
-    max_iter=1000,
-    penalty='l2',  # Use L2 regularization
-    C=1.0,         # Regularization strength; smaller values specify stronger regularization
-    solver='lbfgs' # Suitable solver for L2 penalty
-)
+# Define and train classifiers
+classifiers = {
+    "Dummy": DummyClassifier(strategy="most_frequent"),
+    "LogisticRegression": LogisticRegression(random_state=42, max_iter=1000),
+    "DecisionTree": DecisionTreeClassifier(random_state=42, max_depth=10, min_samples_leaf=5),
+    "RandomForest": RandomForestClassifier(random_state=42, n_estimators=200, max_depth=15),
+    "GradientBoosting": GradientBoostingClassifier(random_state=42, n_estimators=300, learning_rate=0.05),
+    "XGBoost": XGBClassifier(random_state=42, n_estimators=300, learning_rate=0.05, use_label_encoder=False),
+    "SVM": SVC(random_state=42, probability=True),
+}
 
-# Decision Tree with depth limitation
-dectree = DecisionTreeClassifier(
-    random_state=42,
-    max_depth=10,          # Limit the depth of the tree
-    min_samples_leaf=5,    # Minimum number of samples required at a leaf node
-    min_samples_split=10   # Minimum number of samples required to split an internal node
-)
+predictions = {}
 
-# Random Forest with regularization parameters
-randfor = RandomForestClassifier(
-    random_state=42,
-    n_estimators=200,       # Increase number of trees
-    max_depth=15,           # Limit the depth of the trees
-    max_features='sqrt',    # Number of features to consider when looking for the best split
-    min_samples_leaf=4,     # Minimum number of samples required at a leaf node
-    min_samples_split=10    # Minimum number of samples required to split an internal node
-)
+for name, clf in classifiers.items():
+    print(f"Training {name}...")
+    clf.fit(X_train, y_train)
+    preds = clf.predict(X_test)
+    accuracy = accuracy_score(y_test, preds)
+    print(f"{name} Accuracy: {accuracy:.2f}")
+    predictions[name] = preds
 
-# Gradient Boosting with regularization parameters
-gradboost = GradientBoostingClassifier(
-    random_state=42,
-    n_estimators=300,       # Increase number of boosting stages
-    learning_rate=0.05,     # Shrinks the contribution of each tree
-    max_depth=5,            # Limit the depth of the trees
-    min_samples_leaf=4,     # Minimum number of samples required at a leaf node
-    min_samples_split=10    # Minimum number of samples required to split an internal node
-)
+# Evaluate on test data
+print("\nOpening the evaluation files...\n")
+eval_files = [f for f in os.listdir(path_to_eval_tweets)]
 
-# XGBoost with regularization parameters
-xgboost = XGBClassifier(
-    random_state=42,
-    n_estimators=300,
-    learning_rate=0.05,
-    max_depth=5,
-    reg_lambda=1.0,        # L2 regularization term on weights
-    subsample=0.8,         # Subsample ratio of the training instances
-    colsample_bytree=0.8,  # Subsample ratio of columns when constructing each tree
-    use_label_encoder=False,
-    eval_metric='mlogloss'
-)
-
-# SVM with regularization
-svm = SVC(
-    random_state=42,
-    C=1.0,            # Regularization parameter
-    kernel='rbf',     # Radial basis function kernel
-    gamma='scale',    # Kernel coefficient
-    probability=True
-)
-dummy_clf.fit(X_train, y_train)
-logreg.fit(X_train, y_train)
-dectree.fit(X_train, y_train)
-randfor.fit(X_train, y_train)
-gradboost.fit(X_train, y_train)
-xgboost.fit(X_train, y_train)
-svm.fit(X_train, y_train)
-
-dummy_preds = dummy_clf.predict(X_test)
-logreg_preds = logreg.predict(X_test)
-dectree_preds = dectree.predict(X_test)
-randfor_preds = randfor.predict(X_test)
-gradboost_preds = gradboost.predict(X_test)
-xgboost_preds = xgboost.predict(X_test)
-svm_preds = svm.predict(X_test)
-
-print("Dummy Classifier Accuracy: ", accuracy_score(y_test, dummy_preds))
-print("Logistic Regression Accuracy: ", accuracy_score(y_test, logreg_preds))
-print("Decision Tree Accuracy: ", accuracy_score(y_test, dectree_preds))
-print("Random Forest Accuracy: ", accuracy_score(y_test, randfor_preds))
-print("Gradient Boosting Accuracy: ", accuracy_score(y_test, gradboost_preds))
-print("XGBoost Accuracy: ", accuracy_score(y_test, xgboost_preds))
-print("SVM Accuracy: ", accuracy_score(y_test, svm_preds))
-
-###### For Kaggle submission
-
-print('\n' + 'Training the classifiers on the full dataset...' + '\n')
-
-dummy_clf = DummyClassifier(strategy="most_frequent").fit(X, y)
-logreg = LogisticRegression(
-        random_state=42,
-        max_iter=1000,
-        penalty='l2',  # Use L2 regularization
-        C=1.0,         # Regularization strength; smaller values specify stronger regularization
-        solver='lbfgs' # Suitable solver for L2 penalty
-    ).fit(X, y)
-dectree = DecisionTreeClassifier(
-        random_state=42,
-        max_depth=10,          # Limit the depth of the tree
-        min_samples_leaf=5,    # Minimum number of samples required at a leaf node
-        min_samples_split=10   # Minimum number of samples required to split an internal node
-    ).fit(X, y)
-randfor = RandomForestClassifier(
-        random_state=42,
-        n_estimators=200,       # Increase number of trees
-        max_depth=15,           # Limit the depth of the trees
-        max_features='sqrt',    # Number of features to consider when looking for the best split
-        min_samples_leaf=4,     # Minimum number of samples required at a leaf node
-        min_samples_split=10    # Minimum number of samples required to split an internal node
-    ).fit(X, y)
-gradboost = GradientBoostingClassifier(
-        random_state=42,
-        n_estimators=300,       # Increase number of boosting stages
-        learning_rate=0.05,     # Shrinks the contribution of each tree
-        max_depth=5,            # Limit the depth of the trees
-        min_samples_leaf=4,     # Minimum number of samples required at a leaf node
-        min_samples_split=10    # Minimum number of samples required to split an internal node
-    ).fit(X, y)
-xgboost = XGBClassifier(
-        random_state=42,
-        n_estimators=300,
-        learning_rate=0.05,
-        max_depth=5,
-        reg_lambda=1.0,        # L2 regularization term on weights
-        subsample=0.8,         # Subsample ratio of the training instances
-        colsample_bytree=0.8,  # Subsample ratio of columns when constructing each tree
-        use_label_encoder=False,
-        eval_metric='mlogloss'
-    ).fit(X, y)
-svm = SVC(
-        random_state=42,
-        C=1.0,            # Regularization parameter
-        kernel='rbf',     # Radial basis function kernel
-        gamma='scale',    # Kernel coefficient
-        probability=True
-    ).fit(X, y)
-
-
+# Listes pour stocker les prédictions
 dummy_predictions = []
 logreg_predictions = []
 dectree_predictions = []
@@ -399,43 +265,56 @@ xgboost_predictions = []
 svm_predictions = []
 
 def majority_vote(group):
+    """Compute the majority vote for a group of predictions"""
     return mode(group).mode[0]
 
-for fname in os.listdir(path_to_eval_tweets):
-    print('\n' + 'Opening the evaluation files...' + fname + '\n')
+for fname in eval_files:
+    print(f"Processing {fname}...")
+    
+    # Lire les données d'évaluation
+    val_df = pl.read_csv(f"{path_to_eval_tweets}/{fname}")
+    val_df = val_df.with_column(
+        pl.col("Tweet").apply(preprocess_text).alias("Tweet")
+    )
+    
+    # Créer les vecteurs d'embedding
+    tweet_vectors = np.vstack([get_avg_embedding(tweet, embeddings_model, 300) for tweet in val_df["Tweet"].to_list()])
+    tweet_df = pl.DataFrame(tweet_vectors)
+    
+    # Combiner les vecteurs avec les données
+    val_df = pl.concat([val_df, tweet_df], how="horizontal").drop(["Timestamp", "Tweet"])
 
-    val_df = pd.read_csv(path_to_eval_tweets + "/" + fname)
-    val_df['Tweet'] = val_df['Tweet'].apply(preprocess_text)
-
-    tweet_vectors = np.vstack([get_avg_embedding(tweet, embeddings_model, vector_size) for tweet in val_df['Tweet']])
-    tweet_df = pd.DataFrame(tweet_vectors)
-
-    period_features = pd.concat([val_df, tweet_df], axis=1)
-    period_features = period_features.drop(columns=['Timestamp', 'Tweet'])
-
-    ###### REMOVE THE PART WHERE WE GROUP THE TWEETS INTO THEIR CORRESPONDING PERIODS
-    # period_features = period_features.groupby(['MatchID', 'PeriodID', 'ID']).mean().reset_index()
-
-    X = period_features.drop(columns=['MatchID', 'PeriodID', 'ID']).values
-
-    dummy_preds = dummy_clf.predict(X)
-    logreg_preds = logreg.predict(X)
-    dectree_preds = dectree.predict(X)
-    randfor_preds = randfor.predict(X)
-    gradboost_preds = gradboost.predict(X)
-    xgboost_preds = xgboost.predict(X)
-    svm_preds = svm.predict(X)
-
-    # Group by 'MatchID', 'PeriodID', 'ID' and apply majority vote
-    dummy_majority = period_features.groupby(['MatchID', 'PeriodID', 'ID'])['DummyEventType'].apply(majority_vote).reset_index()
-    logreg_majority = period_features.groupby(['MatchID', 'PeriodID', 'ID'])['LogisticRegressionEventType'].apply(majority_vote).reset_index()
-    dectree_majority = period_features.groupby(['MatchID', 'PeriodID', 'ID'])['DecisionTreeEventType'].apply(majority_vote).reset_index()
-    randfor_majority = period_features.groupby(['MatchID', 'PeriodID', 'ID'])['RandomForestEventType'].apply(majority_vote).reset_index()
-    gradboost_majority = period_features.groupby(['MatchID', 'PeriodID', 'ID'])['GradientBoostingEventType'].apply(majority_vote).reset_index()
-    xgboost_majority = period_features.groupby(['MatchID', 'PeriodID', 'ID'])['XGBoostEventType'].apply(majority_vote).reset_index()
-    svm_majority = period_features.groupby(['MatchID', 'PeriodID', 'ID'])['SVMEventType'].apply(majority_vote).reset_index()
-
-    # Append majority-voted predictions to corresponding lists
+    # Prédictions pour chaque modèle
+    for name, clf in classifiers.items():
+        preds = clf.predict(val_df.drop(["MatchID", "PeriodID", "ID"]).to_numpy())
+        val_df = val_df.with_column(
+            pl.Series(preds, name=f"{name}EventType")
+        )
+    
+    # Calculer les votes majoritaires par groupe
+    dummy_majority = val_df.groupby(["MatchID", "PeriodID", "ID"]).agg(
+        [pl.col("DummyEventType").apply(majority_vote).alias("DummyEventType")]
+    )
+    logreg_majority = val_df.groupby(["MatchID", "PeriodID", "ID"]).agg(
+        [pl.col("LogisticRegressionEventType").apply(majority_vote).alias("LogisticRegressionEventType")]
+    )
+    dectree_majority = val_df.groupby(["MatchID", "PeriodID", "ID"]).agg(
+        [pl.col("DecisionTreeEventType").apply(majority_vote).alias("DecisionTreeEventType")]
+    )
+    randfor_majority = val_df.groupby(["MatchID", "PeriodID", "ID"]).agg(
+        [pl.col("RandomForestEventType").apply(majority_vote).alias("RandomForestEventType")]
+    )
+    gradboost_majority = val_df.groupby(["MatchID", "PeriodID", "ID"]).agg(
+        [pl.col("GradientBoostingEventType").apply(majority_vote).alias("GradientBoostingEventType")]
+    )
+    xgboost_majority = val_df.groupby(["MatchID", "PeriodID", "ID"]).agg(
+        [pl.col("XGBoostEventType").apply(majority_vote).alias("XGBoostEventType")]
+    )
+    svm_majority = val_df.groupby(["MatchID", "PeriodID", "ID"]).agg(
+        [pl.col("SVMEventType").apply(majority_vote).alias("SVMEventType")]
+    )
+    
+    # Ajouter les résultats aux listes
     dummy_predictions.append(dummy_majority)
     logreg_predictions.append(logreg_majority)
     dectree_predictions.append(dectree_majority)
@@ -444,15 +323,15 @@ for fname in os.listdir(path_to_eval_tweets):
     xgboost_predictions.append(xgboost_majority)
     svm_predictions.append(svm_majority)
 
-# Concatenate all predictions for each model
-pd.concat(dummy_predictions).to_csv('dummy_majority_predictions.csv', index=False)
-pd.concat(logreg_predictions).to_csv('logistic_majority_predictions.csv', index=False)
-pd.concat(dectree_predictions).to_csv('decision_tree_majority_predictions.csv', index=False)
-pd.concat(randfor_predictions).to_csv('random_forest_majority_predictions.csv', index=False)
-pd.concat(gradboost_predictions).to_csv('gradient_boosting_majority_predictions.csv', index=False)
-pd.concat(xgboost_predictions).to_csv('xgboost_majority_predictions.csv', index=False)
-pd.concat(svm_predictions).to_csv('svm_majority_predictions.csv', index=False)
+# Concaténer et sauvegarder les prédictions
+print("Saving predictions...")
+
+pl.concat(dummy_predictions).write_csv("dummy_majority_predictions.csv", has_header=True)
+pl.concat(logreg_predictions).write_csv("logistic_majority_predictions.csv", has_header=True)
+pl.concat(dectree_predictions).write_csv("decision_tree_majority_predictions.csv", has_header=True)
+pl.concat(randfor_predictions).write_csv("random_forest_majority_predictions.csv", has_header=True)
+pl.concat(gradboost_predictions).write_csv("gradient_boosting_majority_predictions.csv", has_header=True)
+pl.concat(xgboost_predictions).write_csv("xgboost_majority_predictions.csv", has_header=True)
+pl.concat(svm_predictions).write_csv("svm_majority_predictions.csv", has_header=True)
 
 print("Majority voting and prediction saving complete.")
-
-
