@@ -5,3 +5,4 @@ useful_documents/Glove
 Glove
 notebooks/glove.twitter.27B.200d.txt
 notebooks/model.keras
+kaggle-submission/*.csv

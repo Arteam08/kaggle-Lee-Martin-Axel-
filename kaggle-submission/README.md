@@ -13,8 +13,8 @@ This project is part of a machine learning challenge to build a binary classific
 - **`preprocessing.ipynb`**: Jupyter Notebook for preprocessing the data, including data cleaning, normalization, and feature extraction. The processed datasets are saved as:
   - `df_train_withoutstemming.csv`: Training dataset after preprocessing.
   - `df_eval_withoutstemming.csv`: Evaluation dataset after preprocessing.
-- **`LSTM.ipynb`**: Notebook implementing the LSTM embedding method and training/evaluating machine learning models using this embedding.
-- **`TF-IDF.ipynb`**: Notebook implementing the TF-IDF embedding method and training/evaluating machine learning models using this embedding.
+- **`LSTM.ipynb`**: Notebook implementing the LSTM Recurrent Neural Network.
+- **`TF-IDF.ipynb`**: Notebook implementing the TF-IDF embedding method and training/evaluating machine learning models using this embedding on diverse models (NN, random forest, SVM, ...).
 - **`BERTweet.ipynb`**: Notebook utilizing the BERTweet embedding method and training/evaluating machine learning models using this embedding.
 
 ---
