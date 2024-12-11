@@ -10,7 +10,9 @@ This project is part of a machine learning challenge to build a binary classific
 
 ## Repository Structure
 
-- **`preprocessing.ipynb`**: Jupyter Notebook for preprocessing the data, including data cleaning, normalization, and feature extraction.
+- **`preprocessing.ipynb`**: Jupyter Notebook for preprocessing the data, including data cleaning, normalization, and feature extraction. The processed datasets are saved as:
+  - `df_train_withoutstemming.csv`: Training dataset after preprocessing.
+  - `df_eval_withoutstemming.csv`: Evaluation dataset after preprocessing.
 - **`LSTM.ipynb`**: Notebook implementing the LSTM embedding method and training/evaluating machine learning models using this embedding.
 - **`TF-IDF.ipynb`**: Notebook implementing the TF-IDF embedding method and training/evaluating machine learning models using this embedding.
 - **`BERTweet.ipynb`**: Notebook utilizing the BERTweet embedding method and training/evaluating machine learning models using this embedding.
@@ -20,7 +22,9 @@ This project is part of a machine learning challenge to build a binary classific
 ## Usage
 
 ### 1. Preprocessing
-Open and execute the `preprocessing.ipynb` notebook to prepare the dataset for embedding and model training.
+Open and execute the `preprocessing.ipynb` notebook to prepare the dataset for embedding and model training. The processed datasets are saved as:
+  - `df_train_withoutstemming.csv`: Training dataset after preprocessing.
+  - `df_eval_withoutstemming.csv`: Evaluation dataset after preprocessing.
 
 ### 2. Embedding and Model Training
 Use one of the embedding notebooks to both generate features and train/evaluate the models:
