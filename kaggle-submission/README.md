@@ -15,6 +15,7 @@ This project is part of a machine learning challenge to build a binary classific
   - `df_eval_withoutstemming.csv`: Evaluation dataset after preprocessing.
 - **`LSTM.ipynb`**: Notebook implementing the LSTM Recurrent Neural Network.
 - **`TF-IDF.ipynb`**: Notebook implementing the TF-IDF embedding method and training/evaluating machine learning models using this embedding on diverse models (NN, random forest, SVM, ...).
+- **`TD-IDF_with_frequency.ipynb`**: Notebook implementing the TF-IDF embedding method with the normalized frequency metric (number of tweets per second normalized by the average tweet rate for a given match).
 - **`BERTweet.ipynb`**: Notebook utilizing the BERTweet embedding method and training/evaluating machine learning models using this embedding.
 
 ---
@@ -30,6 +31,7 @@ Open and execute the `preprocessing.ipynb` notebook to prepare the dataset for e
 Use one of the embedding notebooks to both generate features and train/evaluate the models:
 - **LSTM embedding and models**: Run `LSTM.ipynb`.
 - **TF-IDF embedding and models**: Run `TF-IDF.ipynb`.
+- **TF-IDF with normalized frequency**: Run `TD-IDF_with_frequency.ipynb`.
 - **BERTweet embedding and models**: Run `BERTweet.ipynb`.
 
 Each notebook includes the following machine learning models:
